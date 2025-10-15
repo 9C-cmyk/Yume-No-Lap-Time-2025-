@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yume No Lap Time - Offline</title>
+<style>
+body { font-family: Arial; background:#111; color:white; padding:20px; }
+h1,h2,h3 { color:#ffcc00; }
+input,textarea,button,select { margin:5px 0; padding:5px; width:100%; }
+#admin-section, #user-section { display:none; margin-top:20px; }
+.chat-box { background:#222; height:200px; overflow-y:auto; padding:10px; border-radius:10px; margin-top:10px; }
+.message-user { background:#ffcc00; color:#000; margin:5px; padding:5px; border-radius:5px; text-align:right;}
+.message-other { background:#444; color:white; margin:5px; padding:5px; border-radius:5px;}
+.button-read { margin-top:5px; }
+</style>
+</head>
+<body>
+
+<h1>Yume No Lap Time</h1>
+
+<!-- Login -->
+<div id="login-section">
+  <h2>Login</h2>
+  <input type="text" id="username" placeholder="Username"><br>
+  <input type="password" id="password" placeholder="Password"><br>
+  <select id="role">
+    <option value="admin">Admin</option>
+    <option value="user">Anggota</option>
+  </select><br>
+  <button onclick="login()">Login</button>
+  <p id="login-msg" style="color:red;"></p>
+</div>
+
+<!-- Admin Panel -->
+<div id="admin-section">
+  <h2>Admin Panel</h2>
+
+  <h3>Tambah Anggota Baru</h3>
+  <input type="text" id="new-user" placeholder="Username anggota baru"><br>
+  <input type="password" id="new-pass" placeholder="Password anggota baru"><br>
+  <button onclick="addUser()">Tambah Anggota</button>
+
+  <h3>Tambah Buku</h3>
+  <input type="text" id="book-title" placeholder="Judul Buku"><br>
+  <textarea id="book-desc" placeholder="Deskripsi"></textarea><br>
+  <button onclick="addBook()">Tambah Buku</button>
+
+  <h3>Daftar Buku</h3>
+  <div id="book-list"></div>
+
+  <h3>Podium Buku Terbanyak</h3>
+  <div id="podium-admin"></div>
+
+  <h3>Chat</h3>
+  <div class="chat-box" id="chat-box"></div>
+  <input type="text" id="chat-text" placeholder="Ketik pesan...">
+  <button onclick="sendMessage()">Kirim</button><br>
+  <button onclick="logout()">Logout</button>
+</div>
+
+<!-- User Panel -->
+<div id="user-section">
+  <h2>Anggota Panel</h2>
+
+  <h3>Daftar Buku</h3>
+  <div id="book-list-user"></div>
+
+  <h3>Podium Buku Terbanyak</h3>
+  <div id="podium"></div>
+
+  <h3>Chat</h3>
+  <div class="chat-box" id="chat-box-user"></div>
+  <input type="text" id="chat-text-user" placeholder="Ketik pesan...">
+  <button onclick="sendMessageUser()">Kirim</button><br>
+  <button onclick="logout()">Logout</button>
+</div>
+
+<script>
+// --- Setup LocalStorage ---
+if(!localStorage.getItem('users')){
+    const users = [
+        {username:'admin1', password:'Admin123', role:'admin'},
+        {username:'admin2', password:'Admin123', role:'admin'},
+        {username:'admin3', password:'Admin123', role:'admin'}
+    ];
+    localStorage.setItem('users', JSON.stringify(users));
+}
+if(!localStorage.getItem('books')) localStorage.setItem('books', JSON.stringify([]));
+if(!localStorage.getItem('chat')) localStorage.setItem('chat', JSON.stringify([]));
+
+let currentUser = null;
+
+// --- Login ---
+function login(){
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const role = document.getElementById('role').value;
+    const users = JSON.parse(localStorage.getItem('users'));
+    const user = users.find(u => u.username===username && u.role===role);
+    if(!user){ document.getElementById('login-msg').textContent='User tidak ditemukan'; return; }
+    if(user.password!==password){ document.getElementById('login-msg').textContent='Password salah'; return; }
+    currentUser = user;
+    document.getElementById('login-section').style.display='none';
+    if(role==='admin'){ 
+        document.getElementById('admin-section').style.display='block'; 
+        loadBooks(); loadChat(); loadPodiumAdmin(); 
+    }
+    else{ 
+        document.getElementById('user-section').style.display='block'; 
+        loadBooksUser(); loadChatUser(); loadPodium(); 
+    }
+}
+
+// --- Logout ---
+function logout(){
+    currentUser=null;
+    document.getElementById('login-section').style.display='block';
+    document.getElementById('admin-section').style.display='none';
+    document.getElementById('user-section').style.display='none';
+}
+
+// --- Admin tambah anggota ---
+function addUser(){
+    if(currentUser.role!=='admin') return alert('Hanya admin yang bisa menambahkan anggota');
+    const username=document.getElementById('new-user').value;
+    const password=document.getElementById('new-pass').value;
+    if(!username || !password) return alert('Isi username dan password');
+    const users=JSON.parse(localStorage.getItem('users'));
+    if(users.find(u=>u.username===username)) return alert('Username sudah ada');
+    users.push({username,password,role:'user', booksRead:[]});
+    localStorage.setItem('users',JSON.stringify(users));
+    alert('Anggota berhasil ditambahkan');
+    document.getElementById('new-user').value='';
+    document.getElementById('new-pass').value='';
+    loadPodiumAdmin();
+}
+
+// --- Tambah Buku ---
+function addBook(){
+    if(currentUser.role!=='admin') return alert('Hanya admin yang bisa menambahkan buku');
+    const title=document.getElementById('book-title').value;
+    const desc=document.getElementById('book-desc').value;
+    if(!title) return;
+    const books=JSON.parse(localStorage.getItem('books'));
+    books.push({title,description:desc,createdBy:currentUser.username});
+    localStorage.setItem('books',JSON.stringify(books));
+    document.getElementById('book-title').value='';
+    document.getElementById('book-desc').value='';
+    loadBooks();
+    loadBooksUser();
+}
+
+// --- Load Buku ---
+function loadBooks(){
+    const books=JSON.parse(localStorage.getItem('books'));
+    const list=document.getElementById('book-list'); list.innerHTML='';
+    books.forEach(b=>{
+        const div=document.createElement('div'); 
+        div.innerHTML=`<strong>${b.title}</strong><p>${b.description}</p>`; 
+        list.appendChild(div);
+    });
+}
+function loadBooksUser(){
+    const books=JSON.parse(localStorage.getItem('books'));
+    const users = JSON.parse(localStorage.getItem('users'));
+    const current = users.find(u=>u.username===currentUser.username);
+    const list=document.getElementById('book-list-user'); list.innerHTML='';
+    books.forEach(b=>{
+        const div=document.createElement('div');
+        const read = current.booksRead && current.booksRead.includes(b.title);
+        div.innerHTML=`<strong>${b.title}</strong><p>${b.description}</p>
+        <button class="button-read" onclick="markRead('${b.title}')">${read?'✔ Sudah Dibaca':'Tandai Dibaca'}</button>`;
+        list.appendChild(div);
+    });
+}
+
+// --- Tandai Buku Dibaca ---
+function markRead(title){
+    const users = JSON.parse(localStorage.getItem('users'));
+    const current = users.find(u=>u.username===currentUser.username);
+    if(!current.booksRead) current.booksRead=[];
+    if(!current.booksRead.includes(title)) current.booksRead.push(title);
+    localStorage.setItem('users',JSON.stringify(users));
+    loadBooksUser();
+    loadPodium();
+    loadPodiumAdmin();
+}
+
+// --- Podium ---
+function loadPodium(){
+    const users = JSON.parse(localStorage.getItem('users')).filter(u=>u.role==='user');
+    users.forEach(u => { if(!u.booksRead) u.booksRead=[]; });
+    users.sort((a,b)=>b.booksRead.length - a.booksRead.length);
+    const podium = document.getElementById('podium'); podium.innerHTML='';
+    users.slice(0,3).forEach((u,i)=>{
+        const div=document.createElement('div');
+        div.innerHTML=`${i+1}. ${u.username} - ${u.booksRead.length} buku`;
+        podium.appendChild(div);
+    });
+}
+function loadPodiumAdmin(){
+    const users = JSON.parse(localStorage.getItem('users')).filter(u=>u.role==='user');
+    users.forEach(u => { if(!u.booksRead) u.booksRead=[]; });
+    users.sort((a,b)=>b.booksRead.length - a.booksRead.length);
+    const podium = document.getElementById('podium-admin'); podium.innerHTML='';
+    users.slice(0,3).forEach((u,i)=>{
+        const div=document.createElement('div');
+        div.innerHTML=`${i+1}. ${u.username} - ${u.booksRead.length} buku`;
+        podium.appendChild(div);
+    });
+}
+
+// --- Chat ---
+function loadChat(){
+    const chat=JSON.parse(localStorage.getItem('chat'));
+    const box=document.getElementById('chat-box'); box.innerHTML='';
+    chat.forEach(c=>{ 
